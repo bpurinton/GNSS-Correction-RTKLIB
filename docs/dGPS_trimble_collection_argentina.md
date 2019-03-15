@@ -7,6 +7,7 @@ titlepage: true
 titlepage-rule-height: 2
 toc-own-page: true 
 listings-disable-line-numbers: true
+footer-left: Ben Purinton ([purinton@uni-potsdam.de](purinton@uni-potsdam.de))
 logo: "figs/TrimbleCover.jpg"
 logo-width: 400
 ---
