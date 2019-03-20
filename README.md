@@ -14,8 +14,8 @@ I've also put up a Python script in the ```scripts``` folder that allows batch p
 python C:\path\to\GNSS-Correction-RTKLIB\scripts\dGPS_PPK_RTKPOST.py 
 ```
 
-from the command-line (**After you check and change the variables on lines 30-56**) and output the corrected points in *.csv* and *.shp* format. 
+from the command-line (**After you check and change the variables on lines 30-52**) and output the corrected points in *.csv* and *.shp* format. 
 
-To change the script to suit your needs, change the variables on **lines 30-56** of ```dGPS_PPK_RTKPOST.py```. Note the ```rnx2rtkp_options.conf``` file in the ```scripts``` directory, which is passed to RTKLIB at the command-line for setting the correction configuration. Refer to the [RTKLIB Manual](http://www.rtklib.com/prog/manual_2.4.2.pdf) for information on that file and more information in general about RTKLIB.
+To change the script to suit your needs, change the variables on **lines 30-52** of ```dGPS_PPK_RTKPOST.py```. Note the ```rnx2rtkp_options.conf``` file in the ```scripts``` directory, which is passed to RTKLIB at the command-line for setting the correction configuration. Refer to the [RTKLIB Manual](http://www.rtklib.com/prog/manual_2.4.2.pdf) for information on that file and more information in general about RTKLIB.
 
 Enjoy!
