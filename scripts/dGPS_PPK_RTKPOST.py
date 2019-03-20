@@ -39,10 +39,6 @@ spatial_ref = 'PROJCS["WGS 84 / UTM zone 19S",GEOGCS["WGS 84",DATUM["WGS_1984",S
 # the UTM zone for file naming
 utmzone = 'utm19s'
 
-# base station approximate UTM coordinates, here we use the UNSA station in Salta, Argentina.
-# This puts a column in the output shapefile with the distance to the base to help assess point quality.
-baseUTMcoords = [863455, 7260460]
-
 # path to the configuration file that sets the options for RTKPOST
 rtkconf = 'C:/Users/BenPurinton/Dropbox/GITHUB/GNSS-Correction-RTKLIB/scripts/rnx2rtkp_options.conf'
 
@@ -260,77 +256,96 @@ def MakeShape(shapename):
 
 #%%
 # function to parse the pos file and get our columns of interest to turn into shapefile
-def parse_rtkpos(fid, layer, startFID):
+def parse_rtkpos(fid, csv_out, layer, startFID):
     wgs = osr.SpatialReference() # geographic coordinate system shapefiles are originally in from lat/lon columns
     wgs.ImportFromWkt('GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.01745329251994328,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]')
     utm = osr.SpatialReference() # re-projection from WGS84 to UTM
     utm.ImportFromWkt(spatial_ref)
     transform = osr.CoordinateTransformation(wgs, utm) # define the transform between the two coordinate systems
-    f = open(fid, 'r').read()
-    lines = f.strip().splitlines()
-    # startFID is for writing an FID to every entry in the output shape and going through every line of .pos file
-    z = startFID
-    for l in lines:
-        # skip the header in the .pos file
-        if l.startswith('%'):
-            continue
-        else:
-            # only pull out the columns we're interested in (values separated by comma)
-            var = l.split(',')
-            time = var[0]
-            lat = float(var[1])
-            lon = float(var[2])
-            height = float(var[3])
-            Q = int(var[4])
-            sdn = float(var[6])
-            sde = float(var[7])
-            sdu = float(var[8])
-            
-            # calculate and add the UTM coordinates and transform the data
-            pt_wgs = ogr.Geometry(ogr.wkbPoint) # give each point a geometry attribute
-            pt_wgs.AddPoint(lon, lat) # pull the geometry from the lat/lon column
-            pt_wgs.Transform(transform) # transform the WGS84 lat/lon to UTM
-            lon_utm = pt_wgs.GetX()
-            lat_utm = pt_wgs.GetY()
-            # add distance to base station
-            basedist = np.sqrt((lat_utm - baseUTMcoords[1])**2 + (lon_utm - baseUTMcoords[0])**2) 
-
-            # Add all the above to the shapefile
-            feature = ogr.Feature(layer.GetLayerDefn())
-            feature.SetGeometry(pt_wgs)
-
-            # index the fields
-            i = feature.GetFieldIndex('Datetime')
-            feature.SetField(i, time)
-            i = feature.GetFieldIndex('lat_gcs')
-            feature.SetField(i, lat)
-            i = feature.GetFieldIndex('lon_gcs')
-            feature.SetField(i, lon)
-            i = feature.GetFieldIndex('north_utm')
-            feature.SetField(i, lat_utm)
-            i = feature.GetFieldIndex('east_utm')
-            feature.SetField(i, lon_utm)
-            i = feature.GetFieldIndex('height')
-            feature.SetField(i, height)
-            i = feature.GetFieldIndex('Q')
-            feature.SetField(i, Q)
-            i = feature.GetFieldIndex('SDN')
-            feature.SetField(i, sdn)
-            i = feature.GetFieldIndex('SDE')
-            feature.SetField(i, sde)
-            i = feature.GetFieldIndex('SDU')
-            feature.SetField(i, sdu)
-            i = feature.GetFieldIndex('base_dist')
-            feature.SetField(i, basedist)
-            feature.SetFID(z)
-            layer.CreateFeature(feature)
-            z = z + 1
+    
+    with open(csv_out, 'w') as csv_file:
+        writer=csv.writer(csv_file, delimiter=",",lineterminator="\n",)
+        writer.writerow(["datetime","latitude(deg)","longitude(deg)","UTMnorth(m)","UTMeast(m)",
+                         "height(m)","Q","sdn(m)","sde(m)","sdu(m)","base_dist(m)"])
+        
+        f = open(fid, 'r').read()
+        lines = f.strip().splitlines()
+        # startFID is for writing an FID to every entry in the output shape and going through every line of .pos file
+        z = startFID
+        for l in lines:
+            # skip the header in the .pos file
+            if l.startswith('%'):
+                # get out the reference station position
+                if l.startswith('% ref pos'):
+                    var = l.split()
+                    baseLat = float(var[3][1:-1])
+                    baseLong = float(var[4][:-1])
+                    # convert to UTM
+                    pt_wgs = ogr.Geometry(ogr.wkbPoint)
+                    pt_wgs.AddPoint(baseLong, baseLat)
+                    pt_wgs.Transform(transform)
+                    baseLong_utm = pt_wgs.GetX()
+                    baseLat_utm = pt_wgs.GetY()
+                else:
+                    continue
+            else:
+                # only pull out the columns we're interested in (values separated by comma)
+                var = l.split(',')
+                time = var[0]
+                lat = float(var[1])
+                lon = float(var[2])
+                height = float(var[3])
+                Q = int(var[4])
+                sdn = float(var[6])
+                sde = float(var[7])
+                sdu = float(var[8])
+                
+                # calculate and add the UTM coordinates and add the distance to the base station
+                pt_wgs = ogr.Geometry(ogr.wkbPoint) # give each point a geometry attribute
+                pt_wgs.AddPoint(lon, lat) # pull the geometry from the lat/lon column
+                pt_wgs.Transform(transform) # transform the WGS84 lat/lon to UTM
+                lon_utm = pt_wgs.GetX()
+                lat_utm = pt_wgs.GetY()
+                # add distance to base station
+                basedist = np.sqrt((lat_utm - baseLat_utm)**2 + (lon_utm - baseLong_utm)**2) 
+                
+                writer.writerow([time, lat, lon, lat_utm, lon_utm, height, Q, sdn, sde, sdu, basedist])
+    
+                # Add all the above to the shapefile
+                feature = ogr.Feature(layer.GetLayerDefn())
+                feature.SetGeometry(pt_wgs)
+    
+                # index the fields
+                i = feature.GetFieldIndex('Datetime')
+                feature.SetField(i, time)
+                i = feature.GetFieldIndex('lat_gcs')
+                feature.SetField(i, lat)
+                i = feature.GetFieldIndex('lon_gcs')
+                feature.SetField(i, lon)
+                i = feature.GetFieldIndex('north_utm')
+                feature.SetField(i, lat_utm)
+                i = feature.GetFieldIndex('east_utm')
+                feature.SetField(i, lon_utm)
+                i = feature.GetFieldIndex('height')
+                feature.SetField(i, height)
+                i = feature.GetFieldIndex('Q')
+                feature.SetField(i, Q)
+                i = feature.GetFieldIndex('SDN')
+                feature.SetField(i, sdn)
+                i = feature.GetFieldIndex('SDE')
+                feature.SetField(i, sde)
+                i = feature.GetFieldIndex('SDU')
+                feature.SetField(i, sdu)
+                i = feature.GetFieldIndex('base_dist')
+                feature.SetField(i, basedist)
+                feature.SetFID(z)
+                layer.CreateFeature(feature)
+                z = z + 1
+        csv_file.close()
     return z
 
 #%%
 # apply correction to each rinex file individually and create a shape file with all points
-fids = []
-sites = []
 for name in rinex_files:
     
     # pull out file names
@@ -353,30 +368,13 @@ for name in rinex_files:
         cmd = cmd.replace('/', '\\')
         subprocess.call(cmd, shell=False)
     
-    # convert the .pos to .csv
-    csv_out = pos_out.split('.pos')[0] + '.csv'
-    with open(csv_out, 'w') as csv_file:
-        writer=csv.writer(csv_file, delimiter=",",lineterminator="\n",)
-        writer.writerow(["GPST","latitude(deg)","longitude(deg)","height(m)","Q","ns","sdn(m)","sde(m)","sdu(m)","sdne(m)","sdeu(m)","sdun(m)","age(s)","ratio"])
-        f = open(pos_out, 'r').read()
-        lines = f.strip().splitlines()    
-        for l in lines:
-            # skip the header in the .pos file
-            if l.startswith('%'):
-                continue
-            else:
-                # only pull out the columns we're interested (values separated by comma)
-                var = l.split(',')
-                writer.writerow([var[0], var[1], var[2], var[3], var[4], var[5], var[6], var[7], var[8], var[9], var[10], var[11], var[12], var[13]])      
-        csv_file.close()
-    
-    # conver the .pos to .shp
+    # convert the .pos to .csv and .shp
     # create the empty shape
-    shape_out = csv_out.split('.csv')[0] + '_wgs84_' + utmzone + '.shp'
+    shape_out = pos_out.split('.pos')[0] + '_wgs84_' + utmzone + '.shp'
     shapeData, layer = MakeShape(shape_out)
-
-    # fill the shape from the .pos file
-    parse_rtkpos(pos_out, layer, 0)
+    # fill the shape from the .pos file (and output a .csv)
+    csv_out = pos_out.split('.pos')[0] + '.csv'
+    parse_rtkpos(pos_out, csv_out, layer, 0)
     del layer, shapeData # need to delete shape and layer from memory to finish the output
 
     # the projection information is usually missing using ogr for this, so we add projection file here
@@ -384,5 +382,3 @@ for name in rinex_files:
         f = open(shape_out.split('.shp')[0] + '.prj', 'w')
         f.write(spatial_ref)
         f.close()
-        
-    fids.append(pos_out)
