@@ -18,6 +18,7 @@ Created on Fri Mar  1 12:39:07 2019
 
 import os, sys, subprocess, shutil, datetime, glob, csv
 import gnsscal # see: https://pypi.org/project/gnsscal/
+import hatanaka # see: https://pypi.org/project/hatanaka/
 import ftplib as ftp
 import numpy as np 
 from osgeo import ogr, osr
@@ -43,9 +44,7 @@ utmzone = 'utm19s'
 rtkconf = 'C:/Users/BenPurinton/Dropbox/GITHUB/GNSS-Correction-RTKLIB/scripts/rnx2rtkp_options.conf'
 
 # the functions we use for subprocess calls to the commmand-line
-sevenzip = 'C:/Program Files/7-Zip/7z' #make sure 7zip is installed
 rnx2rtkp = 'C:/rtklib_2.4.2/bin/rnx2rtkp' #make sure RTKLIB is installed
-crnx2rnx = 'C:/rtklib_2.4.2/bin/crx2rnx' # need this function to change base files from crinex to rinex
 teqc = 'C:/rtklib_2.4.2/bin/teqc' # teqc conversion software
 
 # path to output all files to, as a sub-directory of the base directory, probably leave this alone
@@ -91,7 +90,7 @@ for file in os.listdir(out_path):
 # the functions
 # =============================================================================
 
-def download_corr_files(out_path, base_stn, obs, nav, sevenzip):
+def download_corr_files(out_path, base_stn, obs, nav):
     """
     This function downloads the necessary base station and satellite files (broadcast/orbits)
     for correcting raw rinex files using rtkpost.
@@ -148,15 +147,11 @@ def download_corr_files(out_path, base_stn, obs, nav, sevenzip):
                 # quit and close server connection
                 f.quit()
                 f.close()
-    #also unzip the file with 7zip
-    cmd = '"' + sevenzip + '"' + ' e ' + path + filename + ' -o' + path 
-    subprocess.call(cmd, shell=False)
-    # change the file name and convert to rinex with crnx2rnx
-    shutil.move(path + filename.split('.gz')[0], path + filename.split('crx')[0] + yr[2:] + 'd')
-    cmd = crnx2rnx + ' ' + path + filename.split('crx')[0] + yr[2:] + 'd'
-    subprocess.call(cmd, shell=False)
+    # also decompress the file
+    decompressed_path = hatanaka.decompress_on_disk(path + filename, delete=True)
     # final filename
     baseSTN = path + filename.split('crx')[0] + yr[2:] + 'o'
+    shutil.move(decompressed_path, baseSTN)
     
     # grab the broadcast navigation data from the same directory
     f = ftp.FTP('igs.ensg.ign.fr')
@@ -176,11 +171,10 @@ def download_corr_files(out_path, base_stn, obs, nav, sevenzip):
         # quit and close server connection
         f.quit()
         f.close()
-    # unzip with 7zip
-    cmd = '"' + sevenzip + '"' + ' e ' + path + filename + ' -o' + path 
-    subprocess.call(cmd, shell=False)
+    # decompress the file
+    decompressed_path = hatanaka.decompress_on_disk(path + filename, delete=True)
     # final filename
-    brdc = target_file_name.split('.Z')[0]
+    brdc = str(decompressed_path)
     
     # finally grab the satellite precise orbits from a different directory
     f = ftp.FTP('igs.ensg.ign.fr')
@@ -204,11 +198,10 @@ def download_corr_files(out_path, base_stn, obs, nav, sevenzip):
         target_file_name = os.path.join(path,os.path.basename(filename))
         with open(target_file_name,'wb') as fhandle:
             f.retrbinary('RETR %s' %filename, fhandle.write)
-    # unzip with 7zip    
-    cmd = '"' + sevenzip + '"' + ' e ' + path + filename + ' -o' + path 
-    subprocess.call(cmd, shell=False)
+    # decompress the file   
+    decompressed_path = hatanaka.decompress_on_disk(path + filename, delete=True)
     # final filename
-    orbits = target_file_name.split('.Z')[0]
+    orbits = str(decompressed_path)
     # quit and close server connection for good
     f.quit()
     f.close()
@@ -353,7 +346,7 @@ for name in rinex_files:
     nav = name + '.nav'
     
     # download the necessary files and get the date and filenames to pass into correction function
-    yr, doy, week, baseSTN, brdc, orbits = download_corr_files(out_path, base_stn, obs, nav, sevenzip)
+    yr, doy, week, baseSTN, brdc, orbits = download_corr_files(out_path, base_stn, obs, nav)
     
     # run the correction    
     path = os.path.dirname(orbits)
